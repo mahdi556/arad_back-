@@ -1,0 +1,22 @@
+{
+    "platform": "laravel",
+    "app": "chiteit-laravel",
+    "laravel": {
+        "phpVersion": "8.0",
+        "configCache": true,
+        "routeCache": true,
+        "buildAssets": false
+    },
+    "disks": [
+        {
+            "name": "users",
+            "mountTo": "public/storage/images/users/"
+        },
+        {
+            "name": "videos",
+            "mountTo": "public/storage/videos/users/"
+        },
+        { "name": "samples", "mountTo": "public/storage/samples/" },
+        { "name": "resumes", "mountTo": "public/storage/images/resume/" }
+    ]
+}

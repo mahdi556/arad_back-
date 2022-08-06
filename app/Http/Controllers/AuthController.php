@@ -3,59 +3,49 @@
 namespace App\Http\Controllers;
 
 use App\Http\Resources\UserResource;
-use App\Http\Resources\userShopsResource;
+use App\Jobs\OtpJob;
 use App\Models\User;
 use App\Notifications\OTPsms;
 use CreateExpoPushNotificationsTable;
 use Exception;
-use GuzzleHttp\Psr7\Message;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Spatie\Permission\Models\Role;
 
 class AuthController extends ApiController
 {
     public function register(Request $request)
     {
-
-       
-
-
         $request->validate([
             'cellphone' => 'required'
         ]);
-        try {
-
-            $user = User::all()->where('cellphone', $request->cellphone)->first();
-            //            $OTPCode = 1111;
+            $user = User::where('cellphone', $request->cellphone)->first();
             $OTPCode = mt_rand(1111, 9999);
+            $loginToken = Hash::make('DCDCojncd@cdjn%!!ghnjrgtn&&');
 
-               
- 
             if ($user) {
-                $token = $user->createToken('myApp')->plainTextToken;
-
                 $user->update([
                     'otp' => $OTPCode,
+                    'login_token' => $loginToken
                 ]);
-                $user->login_token = $token;
+                $user->login_token = $loginToken;
                 $user->save();
             } else {
-                
                 $user = User::Create([
                     'cellphone' => $request->cellphone,
-                    // 'otp' => $OTPCode,
+                    'otp' => $OTPCode,
+                    'login_token' => $loginToken
                 ]);
-                // $token = $user->createToken('myApp')->plainTextToken;
-                // $user->login_token = $token;
+                $user->login_token = $loginToken;
                 $user->save();
             }
+
+            // OtpJob::dispatch($OTPCode, $user);
             // $user->notify(new OTPsms($OTPCode, $user->cellphone));
-              dd('ok');
-            return response(['login_token' => $token, 'message' => 'ثبت نام با موفقیت انجام شد'], 200);
-        } catch (\Exception $ex) {
-            return response(['errors' => $ex->getMessage()], 422);
-        }
+
+            return $this->successResponse(['login_token' => $user->login_token], 200);
     }
 
 
@@ -64,15 +54,22 @@ class AuthController extends ApiController
         $request->validate([
             'otp' => 'required|digits:4',
             'login_token' => 'required',
-            'cellphone' => 'required',
-
         ]);
 
         try {
             $user = User::where('login_token', $request->login_token)->firstOrFail();
 
+            // if ($request->otp == $request->otp) {
             if ($request->otp == 1111) {
-                auth()->login($user, $remember = true);
+                // auth()->login($user, $remember = true);
+                $token = $user->createToken('myApp', ['user'])->plainTextToken;
+                // return response(['success' => ['otp' => ['کد تاییدیه درست است']],'new'=>$user->new], 200);
+                $user->remember_token = $token;
+                $user->save();
+                return $this->successResponse([
+                    'user' => new UserResource($user),
+                    'token' => $token
+                ], 200);
             } else {
                 return response(['errors' => ['otp' => ['کد تاییدیه نادرست است']]], 422);
             }
@@ -80,60 +77,89 @@ class AuthController extends ApiController
             return response(['errors' => $ex->getMessage()], 422);
         }
     }
-    public function login(Request $request)
+    public function resendOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'login_token' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse($validator->messages(), 422);
+        }
+
+        $user = User::where('login_token', $request->login_token)->firstOrFail();
+        $OTPCode = mt_rand(1111, 9999);
+        $loginToken = Hash::make('DCDCojncd@cdjn%!!ghnjrgtn&&');
+
+        $user->update([
+            'otp' => $OTPCode,
+            'login_token' => $loginToken
+        ]);
+        $user->login_token = $loginToken;
+        $user->save();
+
+        // $user->notify(new OTPSms($OTPCode));
+
+        return $this->successResponse(['login_token' => $loginToken], 200);
+    }
+
+    public function firstSignUp(Request $request)
     {
 
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required|string',
+            'firstName' => 'required|string',
+            'lastName' => 'required|string',
+            'role' => 'required|string',
         ]);
         if ($validator->fails()) {
             return response()->json($validator->messages(), 422);
         }
-        $user = User::where('email', $request->email)->first();
+
+        $user = User::find(auth()->user()->id);
         if (!$user) {
             return response()->json('user not found', 404);
         }
 
+        // if (!Hash::check($request->password, $user->password)) {
+        //     return response()->json('password is incorrect', 404);
+        // }
+
+        $user->first_name = $request->firstName;
+        $user->last_name = $request->lastName;
+
+        $user->new = 0;
+        $user->save();
+        $user->syncRoles($request->role);
+        return $this->successResponse([
+            'user' => new UserResource($user),
+        ], 200);
+    }
+    public function me()
+    {
+        $user = User::find(Auth::id());
+        return $this->successResponse([
+            'user' =>  new UserResource($user)
+        ], 200);
+    }
+
+    public function loginOffice(Request $request)
+    {
+        $user = User::where('cellphone', $request->cellphone)->first();
+        if (!$user) {
+            return response()->json('user not found', 401);
+        }
         if (!Hash::check($request->password, $user->password)) {
-            return response()->json('password is incorrect', 404);
+            return response()->json('password is incorrect', 401);
         }
 
         $token = $user->createToken('myApp')->plainTextToken;
-
+        $user->login_token = $token;
+        $user->save();
 
         return response()->json([
             'user' => $user,
             'token' => $token
-        ], 201);
+        ], 200);
     }
 
-    // public function registerCell()
-    // {
-    //     $tokens = PushToken::all()->pluck('token')->toArray();
-
-
-    //  }
-    // public function pushToken(Request $request)
-    // {
-    //     $pushToken = PushToken::all()->where('token', $request->push_token)->first();
-    //     if (!$pushToken) {
-    //         PushToken::create([
-    //             'token' => $request->push_token,
-    //             'user_id' => $request->user_id
-    //         ]);
-    //     }
-    //     $user_token = $request->user_token;
-    //     if ($user_token != null) {
-    //         $user = User::where('login_token', $user_token)->first();
-
-    //         return  [
-    //             'user' => new UserResource($user), 'shops' => userShopsResource::collection($shops->load('category')), 200
-    //         ];
-    //     } else {
-    //         return response()->json([
-    //             'message' => 'success'
-    //         ], 200);
-    //     } 
-    // }
 }

@@ -12,15 +12,18 @@ class OtpSms extends Notification
 {
     use Queueable;
        public $code;
+       public $cellphone;
     /**
      * Create a new notification instance.
      *
      * @return void
      */
-    public function __construct()
+    public function __construct($code,$cellphone)
     {
-         
+         $this->code=$code;
+         $this->cellphone=$cellphone;
     }
+
 
     /**
      * Get the notification's delivery channels.
